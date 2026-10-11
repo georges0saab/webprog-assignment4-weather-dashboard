@@ -32,3 +32,18 @@ async function loadWeather(city) { //loadWeather is the main function that will 
 
     return { name, ...(await getJSON(`${WX}?${p}`)) };//We are using the spread operator to merge the name of the city with the weather data that we got from the WX API. The result is an object that contains the name of the city and the weather data for that city.
 }
+
+function renderWeatherData(weatherData) {//renderWeatherData is the function that will be called to display the weather data on the page. It takes the weather data as an argument and updates the HTML elements with the weather data.
+    console.log(weatherData);
+}
+
+document.getElementById('search-form').addEventListener('submit', async (event) => {//We are adding an event listener to the form that will be triggered when the user submits the form. The event listener will call the loadWeather function and display the weather data on the page.
+    event.preventDefault();
+    const city = document.getElementById('city-input').value;
+    try {
+        const weatherData = await loadWeather(city);
+        renderWeatherData(weatherData); // Display weather data on the page
+    } catch (error) {
+        console.error('Error fetching weather data:', error);
+    }
+});

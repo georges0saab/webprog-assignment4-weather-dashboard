@@ -34,8 +34,20 @@ const WEATHER_CODES = {
     99: { text: 'Thunderstorm with heavy hail', emoji: '⛈️' }
 };
 
+const statusEl = document.getElementById('status');
+const retryBtn = document.getElementById('retry');
+const searchBtn = document.getElementById('search-btn');
+const resultsEl = document.getElementById('results');
+let lastCity = ''; // remembers the last search so the Retry button can repeat it
+
 async function getJSON(url) {
-    const response = await fetch(url);
+    let response;
+
+    try {
+        response = await fetch(url);
+    } catch (error) {
+        throw new Error('network'); // fetch only rejects when no response arrived at all (offline, DNS, CORS)
+    }
 
     if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -64,6 +76,33 @@ async function loadWeather(city) { //loadWeather is the main function that will 
     });
 
     return { name, ...(await getJSON(`${WX}?${p}`)) };//We are using the spread operator to merge the name of the city with the weather data that we got from the WX API. The result is an object that contains the name of the city and the weather data for that city.
+}
+
+// Turns an error into a message for the user, in plain words.
+function friendly(error) {
+    const message = error.message;
+
+    if (message === 'not-found') {
+        return 'City not found. Check the spelling.';
+    }
+    if (message === 'network') {
+        return "Couldn't reach the server. Check your connection.";
+    }
+    if (message === 'HTTP 429') {
+        return 'Too many requests. Wait a moment and try again.';
+    }
+    if (message.startsWith('HTTP 5')) {
+        return 'The weather service is having problems. Try again later.';
+    }
+    return 'Something went wrong. Try again.';
+}
+
+// One place that controls what the user sees: idle, loading, success or error.
+function setStatus(state, message = '') {
+    statusEl.dataset.state = state;                // the CSS styles each state with this
+    statusEl.textContent = message;
+    searchBtn.disabled = state === 'loading';      // no second request while one is running
+    retryBtn.hidden = state !== 'error';           // Retry only makes sense after an error
 }
 
 // Returns the text and emoji for a weather code. If the code is not in the table, it returns a default instead of crashing.
@@ -97,16 +136,40 @@ function renderWeatherData(weatherData) {
         })
     );
 
-    document.getElementById('results').hidden = false;
+    resultsEl.hidden = false;
 }
 
-document.getElementById('search-form').addEventListener('submit', async (event) => {//We are adding an event listener to the form that will be triggered when the user submits the form. The event listener will call the loadWeather function and display the weather data on the page.
-    event.preventDefault();
-    const city = document.getElementById('city-input').value;
+// Runs a whole search: loading, then the result or an error. The form and the Retry button both use it.
+async function search(city) {
+    if (statusEl.dataset.state === 'loading') {
+        return; // a request is already running
+    }
+
+    lastCity = city;
+    setStatus('loading', `Loading ${city}…`);
+
     try {
         const weatherData = await loadWeather(city);
-        renderWeatherData(weatherData); // Display weather data on the page
+        renderWeatherData(weatherData);
+        setStatus('success');
     } catch (error) {
-        console.error('Error fetching weather data:', error);
+        resultsEl.hidden = true; // do not leave the old city on screen next to an error
+        setStatus('error', friendly(error));
+        console.warn('Weather request failed:', error); // handled, so a warning and not an error
     }
+}
+
+document.getElementById('search-form').addEventListener('submit', (event) => {//We are adding an event listener to the form that will be triggered when the user submits the form. The event listener will call the loadWeather function and display the weather data on the page.
+    event.preventDefault();
+    const city = document.getElementById('city-input').value.trim(); // the required attribute does not stop spaces, so trim first
+
+    if (!city) {
+        setStatus('error', 'Please enter a city name.');
+        retryBtn.hidden = true; // nothing to retry
+        return;
+    }
+
+    search(city);
 });
+
+retryBtn.addEventListener('click', () => search(lastCity));
